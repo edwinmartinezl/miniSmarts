@@ -1,0 +1,479 @@
+#!/usr/bin/env node
+
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+const readline = require('node:readline');
+const { execFileSync, spawn } = require('node:child_process');
+
+const MINI_ID = '01';
+const MINI_NAME = 'miniSmart-01';
+const UNIT_NAME = MINI_NAME;
+const UNIT_FILE_DEST = `/etc/systemd/system/${UNIT_NAME}.service`;
+const MINI_ENV_DIR = '/etc/minismarts';
+const MINI_ENV_PATH = `${MINI_ENV_DIR}/${MINI_ID}.env`;
+const PACKAGE_ROOT = path.resolve(__dirname, '..');
+const SERVICE_TEMPLATE_PATH = path.join(PACKAGE_ROOT, 'service', `${UNIT_NAME}.service`);
+const DOCS_URL = `http://localhost:7000/api/${MINI_ID}/docs`;
+
+function isRootUser() {
+  return typeof process.getuid === 'function' && process.getuid() === 0;
+}
+
+function execWithOptionalSudo(cmd, args, options = {}) {
+  const execOptions = {
+    stdio: options.stdio || 'inherit',
+    encoding: options.encoding,
+  };
+
+  if (isRootUser()) {
+    return execFileSync(cmd, args, execOptions);
+  }
+
+  try {
+    return execFileSync(cmd, args, execOptions);
+  } catch (directError) {
+    return execFileSync('sudo', [cmd, ...args], execOptions);
+  }
+}
+
+function runPrivileged(cmd, args) {
+  execWithOptionalSudo(cmd, args, { stdio: 'inherit' });
+}
+
+function runPrivilegedCapture(cmd, args) {
+  return execWithOptionalSudo(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+}
+
+function validateMiniArg(miniArg) {
+  if (miniArg !== MINI_ID) {
+    throw new Error(`Mini invalida: ${miniArg || '(vacio)'}. Esta CLI solo opera con ${MINI_ID}.`);
+  }
+}
+
+function centerLine(text, width) {
+  const content = String(text || '');
+  const left = Math.max(0, Math.floor((width - content.length) / 2));
+  return `${' '.repeat(left)}${content}`;
+}
+
+function printBanner() {
+  const width = 48;
+  const border = '='.repeat(width);
+
+  console.log(border);
+  console.log(centerLine('miniSmarts V0.1', width));
+  console.log(border);
+  console.log(centerLine('miniSmart-01', width));
+  console.log(centerLine('Telegram Gateway', width));
+  console.log(centerLine('Puerto: 7000', width));
+  console.log(border);
+}
+
+function parseEnvContent(content) {
+  const values = {};
+  const lines = String(content || '').split(/\r?\n/);
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+
+    const separator = line.indexOf('=');
+    if (separator === -1) {
+      continue;
+    }
+
+    const key = line.slice(0, separator).trim();
+    const value = line.slice(separator + 1).trim();
+    if (key) {
+      values[key] = value;
+    }
+  }
+
+  return values;
+}
+
+function readMiniEnvContent() {
+  try {
+    return fs.readFileSync(MINI_ENV_PATH, 'utf8');
+  } catch (error) {
+    const raw = runPrivilegedCapture('cat', [MINI_ENV_PATH]);
+    return String(raw || '');
+  }
+}
+
+function readStoredToken() {
+  if (!hasStoredTokenFile()) {
+    throw new Error(`No existe archivo de entorno: ${MINI_ENV_PATH}`);
+  }
+
+  const content = readMiniEnvContent();
+  const values = parseEnvContent(content);
+  const token = values.BOT_TOKEN ? String(values.BOT_TOKEN).trim() : '';
+
+  if (!token) {
+    throw new Error(`No existe BOT_TOKEN en ${MINI_ENV_PATH}`);
+  }
+
+  return token;
+}
+
+function hasStoredTokenFile() {
+  try {
+    return fs.existsSync(MINI_ENV_PATH);
+  } catch (error) {
+    return false;
+  }
+}
+
+function maskToken(token) {
+  const value = String(token || '');
+  if (!value) {
+    return '***';
+  }
+
+  const parts = value.split(':');
+  if (parts.length === 2) {
+    const left = `${parts[0]}:${parts[1].slice(0, 3)}`;
+    const right = parts[1].slice(-3);
+    return `${left}****${right}`;
+  }
+
+  if (value.length < 12) {
+    return '***';
+  }
+
+  return `${value.slice(0, 6)}****${value.slice(-3)}`;
+}
+
+async function promptBotToken(promptLabel) {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+      terminal: true,
+    });
+
+    rl.question(promptLabel, (answer) => {
+      rl.close();
+      resolve(String(answer || '').trim());
+    });
+  });
+}
+
+async function validateTokenWithTelegram(token) {
+  const normalized = String(token || '').trim();
+  if (!normalized || !normalized.includes(':')) {
+    return {
+      ok: false,
+      reason: 'Formato de token invalido.',
+    };
+  }
+
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${normalized}/getMe`, {
+      method: 'GET',
+    });
+
+    const body = await response.json().catch(() => null);
+
+    if (!response.ok || !body || body.ok !== true || !body.result) {
+      const reason = body && body.description ? body.description : `HTTP ${response.status}`;
+      return {
+        ok: false,
+        reason,
+      };
+    }
+
+    return {
+      ok: true,
+      bot_id: body.result.id,
+      bot_username: body.result.username,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: error.message,
+    };
+  }
+}
+
+function writeTokenToMiniEnv(token) {
+  const normalized = String(token || '').trim();
+  const content = `BOT_TOKEN=${normalized}\n`;
+  const tempEnvPath = path.join(os.tmpdir(), `${MINI_ID}.env.${process.pid}`);
+
+  fs.writeFileSync(tempEnvPath, content, 'utf8');
+
+  try {
+    runPrivileged('install', ['-d', '-m', '755', MINI_ENV_DIR]);
+    runPrivileged('install', ['-m', '600', tempEnvPath, MINI_ENV_PATH]);
+  } finally {
+    if (fs.existsSync(tempEnvPath)) {
+      fs.unlinkSync(tempEnvPath);
+    }
+  }
+}
+
+async function ensureTokenForInstall() {
+  if (hasStoredTokenFile()) {
+    console.log(`[minismarts] Archivo de entorno detectado: ${MINI_ENV_PATH}`);
+    return readStoredToken();
+  }
+
+  const token = await promptBotToken('[minismarts] Ingresa BOT_TOKEN para miniSmart-01: ');
+  if (!token) {
+    throw new Error('No se recibio BOT_TOKEN. Instalacion cancelada.');
+  }
+
+  const validation = await validateTokenWithTelegram(token);
+  if (!validation.ok) {
+    throw new Error(`Token invalido: ${validation.reason}`);
+  }
+
+  writeTokenToMiniEnv(token);
+  console.log(`[minismarts] Token validado para @${validation.bot_username} (id ${validation.bot_id}).`);
+  console.log(`[minismarts] Archivo generado: ${MINI_ENV_PATH}`);
+
+  return token;
+}
+
+function renderServiceTemplate() {
+  if (!fs.existsSync(SERVICE_TEMPLATE_PATH)) {
+    throw new Error(`No existe plantilla de servicio: ${SERVICE_TEMPLATE_PATH}`);
+  }
+
+  const template = fs.readFileSync(SERVICE_TEMPLATE_PATH, 'utf8');
+  const workingDirectory = String(PACKAGE_ROOT);
+  const nodeBin = String(process.execPath);
+
+  return template
+    .replaceAll('__WORKDIR__', workingDirectory)
+    .replaceAll('__NODE_BIN__', nodeBin);
+}
+
+async function installService() {
+  printBanner();
+  await ensureTokenForInstall();
+
+  const renderedService = renderServiceTemplate();
+  const tempUnitPath = path.join(os.tmpdir(), `${UNIT_NAME}.service.${process.pid}`);
+
+  fs.writeFileSync(tempUnitPath, renderedService, 'utf8');
+
+  try {
+    runPrivileged('install', ['-m', '644', tempUnitPath, UNIT_FILE_DEST]);
+    runPrivileged('systemctl', ['daemon-reload']);
+    runPrivileged('systemctl', ['enable', UNIT_NAME]);
+    runPrivileged('systemctl', ['start', UNIT_NAME]);
+
+    console.log(`[minismarts] Servicio instalado y activo: ${UNIT_NAME}`);
+    console.log(`[minismarts] Unit file: ${UNIT_FILE_DEST}`);
+  } finally {
+    if (fs.existsSync(tempUnitPath)) {
+      fs.unlinkSync(tempUnitPath);
+    }
+  }
+}
+
+function uninstallService() {
+  try {
+    runPrivileged('systemctl', ['stop', UNIT_NAME]);
+  } catch (error) {
+    console.log('[minismarts] stop omitido (servicio posiblemente inactivo).');
+  }
+
+  try {
+    runPrivileged('systemctl', ['disable', UNIT_NAME]);
+  } catch (error) {
+    console.log('[minismarts] disable omitido (servicio posiblemente no habilitado).');
+  }
+
+  runPrivileged('rm', ['-f', UNIT_FILE_DEST]);
+  runPrivileged('systemctl', ['daemon-reload']);
+
+  console.log(`[minismarts] Servicio eliminado: ${UNIT_NAME}`);
+}
+
+function startService() {
+  printBanner();
+  runPrivileged('systemctl', ['start', UNIT_NAME]);
+}
+
+function stopService() {
+  runPrivileged('systemctl', ['stop', UNIT_NAME]);
+}
+
+function restartService() {
+  runPrivileged('systemctl', ['restart', UNIT_NAME]);
+}
+
+function statusService() {
+  printBanner();
+  runPrivileged('systemctl', ['status', UNIT_NAME, '--no-pager']);
+}
+
+function logsService() {
+  runPrivileged('journalctl', ['-u', UNIT_NAME, '-n', '120', '-f']);
+}
+
+function openDocs() {
+  console.log(`[minismarts] Documentacion local: ${DOCS_URL}`);
+
+  try {
+    const child = spawn('xdg-open', [DOCS_URL], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+  } catch (error) {
+    console.log('[minismarts] No se pudo abrir navegador automaticamente. Abre la URL manualmente.');
+  }
+}
+
+async function tokenSet() {
+  const token = await promptBotToken('[minismarts] Nuevo BOT_TOKEN: ');
+  if (!token) {
+    throw new Error('No se recibio BOT_TOKEN.');
+  }
+
+  const validation = await validateTokenWithTelegram(token);
+  if (!validation.ok) {
+    throw new Error(`Token invalido: ${validation.reason}`);
+  }
+
+  writeTokenToMiniEnv(token);
+  console.log(`[minismarts] Token guardado en ${MINI_ENV_PATH}`);
+  console.log(`[minismarts] Bot validado: @${validation.bot_username} (id ${validation.bot_id})`);
+
+  try {
+    restartService();
+    console.log(`[minismarts] Servicio reiniciado: ${UNIT_NAME}`);
+  } catch (error) {
+    console.log(`[minismarts] Aviso: no se pudo reiniciar servicio automaticamente (${error.message}).`);
+  }
+}
+
+function tokenGet() {
+  const token = readStoredToken();
+  console.log(`[minismarts] BOT_TOKEN: ${maskToken(token)}`);
+}
+
+async function tokenValidate() {
+  const token = readStoredToken();
+  const validation = await validateTokenWithTelegram(token);
+
+  if (!validation.ok) {
+    throw new Error(`Token invalido: ${validation.reason}`);
+  }
+
+  console.log(`[minismarts] Token valido. Bot: @${validation.bot_username} (id ${validation.bot_id})`);
+}
+
+function printUsage() {
+  console.log('Uso: minismarts <comando> <mini_id>');
+  console.log(`Mini soportada: ${MINI_ID} (${MINI_NAME})`);
+  console.log('');
+  console.log('Service Lifecycle:');
+  console.log('  minismarts install 01      Instala y activa el servicio (token obligatorio)');
+  console.log('  minismarts uninstall 01    Elimina servicio y recarga systemd');
+  console.log('  minismarts start 01        Inicia miniSmart-01');
+  console.log('  minismarts stop 01         Detiene miniSmart-01');
+  console.log('  minismarts restart 01      Reinicia miniSmart-01');
+  console.log('  minismarts status 01       Estado actual del servicio');
+  console.log('  minismarts logs 01         Logs en tiempo real');
+  console.log('  minismarts docs 01         Abre documentacion local');
+  console.log('');
+  console.log('Token Management:');
+  console.log('  minismarts token set 01       Solicita, valida y guarda BOT_TOKEN');
+  console.log('  minismarts token get 01       Muestra BOT_TOKEN enmascarado');
+  console.log('  minismarts token validate 01  Valida BOT_TOKEN contra Telegram');
+}
+
+async function main() {
+  const command = process.argv[2];
+
+  if (!command || command === 'help' || command === '--help' || command === '-h') {
+    printUsage();
+    return;
+  }
+
+  try {
+    if (command === 'token') {
+      const tokenCommand = process.argv[3];
+      const tokenMiniArg = process.argv[4];
+      validateMiniArg(tokenMiniArg);
+
+      if (tokenCommand === 'set') {
+        await tokenSet();
+        return;
+      }
+
+      if (tokenCommand === 'get') {
+        tokenGet();
+        return;
+      }
+
+      if (tokenCommand === 'validate') {
+        await tokenValidate();
+        return;
+      }
+
+      throw new Error(`Subcomando token invalido: ${tokenCommand || '(vacio)'}.`);
+    }
+
+    const miniArg = process.argv[3];
+    validateMiniArg(miniArg);
+
+    if (command === 'install') {
+      await installService();
+      return;
+    }
+
+    if (command === 'uninstall') {
+      uninstallService();
+      return;
+    }
+
+    if (command === 'start') {
+      startService();
+      return;
+    }
+
+    if (command === 'stop') {
+      stopService();
+      return;
+    }
+
+    if (command === 'restart') {
+      restartService();
+      return;
+    }
+
+    if (command === 'status') {
+      statusService();
+      return;
+    }
+
+    if (command === 'logs') {
+      logsService();
+      return;
+    }
+
+    if (command === 'docs') {
+      openDocs();
+      return;
+    }
+
+    console.error(`[minismarts] Comando desconocido: ${command}`);
+    printUsage();
+    process.exit(1);
+  } catch (error) {
+    console.error(`[minismarts] Error: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+main();

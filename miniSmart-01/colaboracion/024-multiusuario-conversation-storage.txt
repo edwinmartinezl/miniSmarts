@@ -1,0 +1,96 @@
+PROYECTO: miniSmarts
+MINI: miniSmart-01
+FASE: ESTRUCTURA MULTIUSUARIO Y PERSISTENCIA DE CONVERSACIONES
+
+OBJETIVO:
+Implementar almacenamiento estructurado por usuario para conversaciones,
+separando claramente mensajes enviados por el modelo y mensajes enviados por el usuario.
+
+RESUMEN DE CAMBIOS REALIZADOS
+
+1) Nueva carpeta raíz: `users/`
+   - Ubicación: raíz del proyecto (junto a `data/`, `storage/`, etc.).
+   - Cada usuario se representa con una carpeta `users/<instance_id>/` donde `<instance_id>`
+     sigue el formato `<source>:<user_id>` (por ejemplo `telegram:1972831850`).
+
+2) Archivo por usuario: `conversation.jsonl`
+   - Dentro de cada carpeta de usuario se crea `conversation.jsonl`.
+   - Cada línea contiene un objeto JSON independiente (JSONL) con la estructura
+     definida en el objetivo.
+
+3) Formato de cada entrada en `conversation.jsonl`
+   - Campos mínimos:
+     - `timestamp`: ISO 8601 del evento.
+     - `actor`: `user` o `model`.
+     - `model_name`: Nombre del modelo si `actor` es `model`, `null` en caso contrario.
+     - `message`: Texto del mensaje.
+     - `chat_id`: ID del chat en Telegram.
+     - `message_id`: ID del mensaje en Telegram (puede ser `null` para salidas del modelo).
+     - `meta`: Objeto con metadatos adicionales (source, type, update_id, message_date_unix, etc.).
+
+4) Integración con flujo actual
+   - Al recibir un mensaje desde Telegram:
+     - Se conserva el registro en `data/events.jsonl` (sin cambios).
+     - Se crea/actualiza `users/<instance_id>/conversation.jsonl` agregando una línea
+       con `actor: "user"` y `message` con el texto recibido.
+   - Al enviar una respuesta desde miniSmart-01:
+     - Después de enviar el mensaje a través del adapter correspondiente, se escribe
+       una entrada en `conversation.jsonl` con `actor: "model"` y `model_name: "miniSmart-01"`.
+   - No se eliminan ni modifican los contenidos de `data/events.jsonl`.
+
+5) Creación automática de usuario
+   - Si la carpeta `users/<instance_id>/` no existe, se crea automáticamente en el
+     primer evento entrante (no provoca error si ya existe).
+   - Si `conversation.jsonl` no existe, se crea vacío.
+
+6) Módulos añadidos y responsabilidades
+   - `storage/conversation-store.js`: API para crear rutas de usuario, crear/leer/adjuntar
+     entradas en `conversation.jsonl`, y obtener estadísticas simples.
+   - `core/reply-handler.js`: API para registrar respuestas del modelo en el `conversation.jsonl`.
+   - Integración en `core/message-gateway.js`: al ingestar eventos de usuario, se invoca
+     `appendConversationEntry` para registrar `actor: user`.
+   - Integración en `index.js`: al enviar mensajes (endpoints `/reply` y `/send`),
+     se registra la entrada `actor: model` usando `reply-handler`.
+
+7) Compatibilidad y no regresión
+   - El flujo y los archivos existentes (`data/events.jsonl`, `data/users.json`) permanecen
+     intactos y se usan como fuente de verdad para eventos y usuarios.
+   - La nueva estructura es aditiva: no rompe procesos que consuman `data/events.jsonl`.
+
+8) Ejemplo real de conversación
+   - `data/events.jsonl` contiene (ejemplo):
+     {"source":"telegram","received_at":"2026-02-28T00:01:01.905Z","update_id":838180540,"message_id":25,"chat_id":1972831850,"user_id":1972831850,"type":"text","content":{"text":"Bien gracias"},"message_date_unix":1772236861}
+   - `users/telegram:1972831850/conversation.jsonl` resultante (líneas):
+     {"timestamp":"2026-02-27T23:58:49.468Z","actor":"user","model_name":null,"message":"Hoka","chat_id":1972831850,"message_id":22,"meta":{"source":"telegram","type":"text","update_id":838180539,"message_date_unix":1772236729}}
+     {"timestamp":"2026-02-28T00:01:01.905Z","actor":"user","model_name":null,"message":"Bien gracias","chat_id":1972831850,"message_id":25,"meta":{"source":"telegram","type":"text","update_id":838180540,"message_date_unix":1772236861}}
+     {"timestamp":"2026-02-28T00:01:16.000Z","actor":"model","model_name":"miniSmart-01","message":"¿Di cómo estás?","chat_id":1972831850,"message_id":null,"meta":{"source":"telegram"}}
+
+9) Impacto en rendimiento
+   - Operaciones de escritura se realizan con `fs.appendFileSync` para simplicidad y
+     durabilidad inmediata. En entornos de alto volumen se puede cambiar a colas
+     asíncronas o escritura por lotes para reducir I/O.
+   - Añadir esta estructura incrementa ligeramente I/O por mensaje (una escritura
+     adicional por evento entrante y por respuesta del modelo). En hardware moderno
+     y con tráfico moderado esto es despreciable.
+
+10) Recomendaciones futuras
+   - Implementar rotación/compactación de `conversation.jsonl` para limitar tamaño.
+   - Añadir flags de configuración para controlar si conversation storage está activo.
+   - Agregar endpoints para consultar historial por usuario (paginado).
+
+VALIDACION FINAL (Checklist)
+- Al recibir mensaje Telegram se crea carpeta de usuario: Sí (implementado en `conversation-store` y llamada desde `message-gateway`).
+- Se crea conversation.jsonl: Sí (se crea si no existe al append).
+- Se registra entrada actor=user: Sí (implementado en `core/message-gateway.js`).
+- Al responder desde backend se registra actor=model: Sí (implementado en `index.js` via `reply-handler`).
+- No se rompe flujo existente: Sí (events.jsonl y users.json permanecen intactos).
+
+ENTREGABLES CREADOS
+- `storage/conversation-store.js` (módulo de gestión de conversation.jsonl)
+- `core/reply-handler.js` (registro de respuestas del modelo)
+- Modificaciones en `core/message-gateway.js` para guardar mensajes de usuario
+- Modificaciones en `index.js` para guardar respuestas del modelo
+- `README.md` actualizado con sección "Multi-User Conversation Storage"
+- `colaboracion/024-multiusuario-conversation-storage.txt` (este documento)
+
+FIN DEL REPORTE

@@ -1,0 +1,65 @@
+DOCUMENTACION TECNICA
+ECOSISTEMA: miniSmarts
+MINI: miniSmart-01 v0.1
+
+1) Identidad
+
+miniSmart-01 es un gateway Telegram del ecosistema miniSmarts.
+Opera en localhost puerto 7000 y expone API bajo /api/01.
+
+2) Endpoints publicos
+
+- GET /api/01/capabilities
+  Expone capacidades del mini para orquestadores y agentes externos.
+
+- GET /api/01/contract
+  Publica contrato de rutas oficiales de miniSmart-01.
+
+- POST /api/01/send
+  Recibe source, chat_id y message para salida hacia canales soportados.
+
+- GET /api/01/health
+  Devuelve identidad y estado operativo.
+
+- GET /api/01/docs
+  Entrega documentacion local embebida.
+
+3) Endpoints operativos internos compatibles
+
+- POST /api/01/message
+- POST /api/01/reply
+
+Se mantienen para compatibilidad con el flujo actual del adapter Telegram.
+
+4) Contrato de salud
+
+GET /api/01/health informa:
+- mini_id
+- mini_name
+- mini_type
+- version
+- bot_conectado
+- usuarios_registrados
+- polling_activo
+
+5) Gestion de token
+
+- Archivo requerido: /etc/minismarts/01.env
+- Clave requerida: BOT_TOKEN
+- Instalacion valida token con Telegram (getMe) cuando el archivo no existe.
+
+6) CLI unificada
+
+- minismarts install 01
+- minismarts uninstall 01
+- minismarts start 01
+- minismarts stop 01
+- minismarts restart 01
+- minismarts status 01
+- minismarts logs 01
+- minismarts docs 01
+- minismarts token set 01
+- minismarts token get 01
+- minismarts token validate 01
+
+GitHub oficial: https://github.com/edwinmartinezl

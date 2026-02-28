@@ -1,0 +1,43 @@
+{
+  "name": "minismarts-01",
+  "version": "0.1.0",
+  "description": "miniSmart-01 Telegram gateway for miniSmarts. Optimized for small LLMs (3B+) and low-resource environments.",
+  "main": "index.js",
+  "bin": {
+    "minismarts": "bin/minismarts"
+  },
+  "files": [
+    "index.js",
+    "adapters/",
+    "core/",
+    "storage/",
+    "bin/",
+    "service/",
+    "public/",
+    "README.md",
+    "LICENSE",
+    "documentacion/"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
+  "keywords": [
+    "minismarts",
+    "telegram",
+    "gateway",
+    "small-llm",
+    "low-resource"
+  ],
+  "author": "Edwin Martinez L. - Santo Domingo, Republica Dominicana",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/edwinmartinezl/minismarts-01.git"
+  },
+  "bugs": {
+    "url": "https://github.com/edwinmartinezl/minismarts-01/issues"
+  },
+  "homepage": "https://github.com/edwinmartinezl/minismarts-01#readme",
+  "type": "commonjs"
+}

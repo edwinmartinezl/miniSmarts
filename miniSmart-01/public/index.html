@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>miniSmart-01 | miniSmarts v0.1</title>
+  <style>
+    :root {
+      --bg: #f4f7f2;
+      --card: #ffffff;
+      --ink: #152019;
+      --muted: #4a5a4c;
+      --line: #d6dfd1;
+      --accent: #0a6c5d;
+      --accent-soft: #e0f2ee;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Source Sans 3", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 92% -10%, #d8f1eb 0, transparent 34%),
+        radial-gradient(circle at -10% 28%, #eef5d6 0, transparent 28%),
+        var(--bg);
+      line-height: 1.45;
+    }
+
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 30px 16px 64px;
+    }
+
+    h1, h2 { margin: 0 0 10px; font-family: "IBM Plex Serif", Georgia, serif; }
+    h1 { font-size: clamp(1.8rem, 4vw, 2.7rem); }
+    h2 { font-size: 1.22rem; margin-top: 24px; }
+
+    .lead { margin: 0 0 14px; color: var(--muted); }
+
+    .tag {
+      display: inline-block;
+      margin-bottom: 10px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.8rem;
+      letter-spacing: 0.03em;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      padding: 16px;
+      margin-top: 14px;
+      box-shadow: 0 7px 18px rgba(16, 30, 23, 0.06);
+    }
+
+    code {
+      background: var(--accent-soft);
+      color: #084c42;
+      border: 1px solid #b7dcd5;
+      border-radius: 7px;
+      padding: 2px 7px;
+      font-size: 0.95em;
+    }
+
+    ul { margin: 8px 0 0 18px; padding: 0; }
+    li { margin: 5px 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <span class="tag">miniSmarts V0.1</span>
+    <h1>miniSmart-01</h1>
+    <p class="lead">Telegram Gateway oficial del ecosistema miniSmarts, orientado a modelos pequeños (3B+) y entornos de recursos limitados.</p>
+
+    <section class="card">
+      <h2>Rol y alcance</h2>
+      <ul>
+        <li>Mini: <code>miniSmart-01</code></li>
+        <li>Tipo: <code>gateway</code></li>
+        <li>Puerto: <code>7000</code></li>
+        <li>Namespace: <code>/api/01</code></li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>Endpoints API públicos</h2>
+      <ul>
+        <li><code>GET /api/01/capabilities</code></li>
+        <li><code>GET /api/01/contract</code></li>
+        <li><code>POST /api/01/send</code></li>
+        <li><code>GET /api/01/health</code></li>
+        <li><code>GET /api/01/docs</code></li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>CLI OPERATIONS</h2>
+      <ul>
+        <li>Ciclo de vida del servicio: <code>install</code>, <code>uninstall</code>, <code>start</code>, <code>stop</code>, <code>restart</code>, <code>status</code>, <code>logs</code>, <code>docs</code> con mini <code>01</code>.</li>
+        <li>Gestión de token: <code>minismarts token set 01</code>, <code>minismarts token get 01</code>, <code>minismarts token validate 01</code>.</li>
+        <li>Ubicación del archivo de entorno: <code>/etc/minismarts/01.env</code>.</li>
+        <li>Cómo validar bot: ejecutar <code>minismarts token validate 01</code> para confirmar acceso a Telegram con <code>getMe</code>.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>Flujo de instalación real</h2>
+      <ul>
+        <li>Instalar con <code>npm install -g minismarts-01</code>.</li>
+        <li>Ejecutar <code>minismarts install 01</code>.</li>
+        <li>Si falta entorno, se solicita token, se valida y se persiste en <code>/etc/minismarts/01.env</code>.</li>
+        <li>Se instala y arranca <code>miniSmart-01.service</code>.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>Publicación npm</h2>
+      <ul>
+        <li>Validar paquete con <code>npm pack</code>.</li>
+        <li>Autenticarse con <code>npm login</code>.</li>
+        <li>Publicar con <code>npm publish</code>.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>GitHub</h2>
+      <ul>
+        <li>Perfil oficial: <code>https://github.com/edwinmartinezl</code></li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

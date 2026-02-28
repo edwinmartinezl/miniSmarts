@@ -1,0 +1,13 @@
+[Unit]
+Description=miniSmarts miniSmart-01 Telegram Gateway
+After=network.target
+
+[Service]
+Type=simple
+ExecStart="__NODE_BIN__" "__WORKDIR__/index.js"
+EnvironmentFile=/etc/minismarts/01.env
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

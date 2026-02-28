@@ -1,0 +1,23 @@
+# Local environment
+.env
+
+# Runtime data (generated in execution)
+data/events.jsonl
+data/users.json
+data/telegram_offset.txt
+data/inbox/
+
+# Local notes and assets not required for public repo
+documentacion.txt
+local_lan.txt
+icon.png
+ChatGPT Image 27 feb 2026, 11_40_25.png
+
+# npm artifacts and logs
+*.tgz
+_logs/
+_update-notifier-last-checked
+
+# OS/editor
+.DS_Store
+Thumbs.db
